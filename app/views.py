@@ -1,22 +1,23 @@
 from django.core.cache import caches
 from django.http import JsonResponse
+import datetime
 import uuid
 
 def join_game(request):
     default_cache = caches['default']
-    next_game = default_cache.get('next_game')
-    if not next_game:
+    next_game_id = default_cache.get('next_game')
+    if not next_game_id:
         next_game_id = uuid.uuid4()
-        current_players = 1
+        current_players = 0
         next_game = {
-            'id': next_game_id,
-            'current_players': current_players
+            "id": next_game_id,
+            "current_players": current_players,
+            "status": "Lobby",
+            # TODO: celery based events to start the game instead of this
+            # If player threshold is not met we don't want people waiting all day
+            "start_time": datetime.datetime.now() + datetime.timedelta(seconds=10) 
         }
-    else:
-        current_players = next_game['current_players'] + 1
-        next_game = {
-            'id': next_game['id'],
-            'current_players': current_players
-        }
-    default_cache.set('next_game', next_game)
-    return JsonResponse({'id': next_game['id']})
+        default_cache.set(next_game["id"], next_game)
+
+        default_cache.set("next_game", next_game["id"])
+    return JsonResponse({"id": next_game_id})
