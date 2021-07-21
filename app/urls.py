@@ -16,8 +16,9 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path
 from channels.routing import ProtocolTypeRouter, URLRouter
-from app.consumers import GameConsumer
+from app.views import join_game
 
 urlpatterns = [
-    path('admin/', admin.site.urls)
+    path('admin/', admin.site.urls),
+    path('join_game/', join_game)
 ]
