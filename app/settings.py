@@ -1,11 +1,3 @@
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("redis-channel-1", 6379)],
-        },
-    },
-}
 """
 Django settings for app project.
 
@@ -131,11 +123,11 @@ STATIC_ROOT = os.path.join(os.path.realpath(__file__), '/static/')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-redis_url = os.environ.get('REDIS_URL')
+REDIS_URL = os.environ.get('REDIS_URL')
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": redis_url,
+        "LOCATION": REDIS_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient"
         },
@@ -144,6 +136,14 @@ CACHES = {
     }
 }
 
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [REDIS_URL],
+        },
+    },
+}
 
 ALLOWED_HOSTS=['*']
 CORS_ORIGIN_ALLOW_ALL = True
