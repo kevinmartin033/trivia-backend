@@ -131,11 +131,11 @@ STATIC_ROOT = os.path.join(os.path.realpath(__file__), '/static/')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-
+redis_url = os.environ.get('REDIS_URL')
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "REDIS_URL",
+        "LOCATION": redis_url,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient"
         },
