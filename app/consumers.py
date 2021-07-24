@@ -33,6 +33,7 @@ class GameConsumer(AsyncConsumer):
                 "start_time": (game_info["start_time"] - datetime.datetime.now()).total_seconds()
             }
         )
+
     async def game_players_count(self, message):
         await self.send({
             "type": "websocket.send",
@@ -58,10 +59,11 @@ class GameConsumer(AsyncConsumer):
                 "code": "next_question",
                 "question_id": message["question_id"],
                 "question_text": message["question_text"],
-                "answers": message["answers"]
+                "answers": message["answers"],
+                "expiry": message["expiry"]
             })
         })
-    
+
     async def submit_answer(self, game_id, game_info, message):
         cache = caches["default"]
         question = game_info["questions"][game_info["question_index"]]
@@ -79,19 +81,30 @@ class GameConsumer(AsyncConsumer):
                 "type": "websocket.send",
                 "text": json.dumps({
                     "code": "late_answer",
-                    "correct_answer": question_match["answer"]
+                    "correct_answer": question_match["correct_answer"]
                 })
             })
-        if message["answer"] == question["correct_answer"]:
+        if datetime.datetime.now() > question["expiry"]:
+            await self.send({
+                "type": "websocket.send",
+                "text": json.dumps({
+                    "code": "late_answer",
+                    "correct_answer": question["correct_answer"]
+                })
+            })
+        elif message["answer"] == question["correct_answer"]:
+            game_info["questions"][game_info["question_index"]]["submitted_answers"][message["answer"]] += 1
+            cache.set(game_id, game_info)
             await self.send({
                 "type": "websocket.send",
                 "text": json.dumps({
                     "code": "correct_answer",
-                    "correct_answer": question["correct_answer"],
-                    "next_question": ((question["expiry"] + datetime.timedelta(seconds=10)) - datetime.datetime.now()).total_seconds()
+                    "correct_answer": question["correct_answer"]
                 })
             })
         else:
+            game_info["questions"][game_info["question_index"]]["submitted_answers"][message["answer"]] += 1
+            cache.set(game_id, game_info)
             await self.send({
                 "type": "websocket.send",
                 "text": json.dumps({
@@ -111,9 +124,11 @@ class GameConsumer(AsyncConsumer):
         question = game_info["questions"][game_info["question_index"]]
         if question.get("expiry") is None:
             game_info["questions"][game_info["question_index"]]["expiry"] =  datetime.datetime.now() + datetime.timedelta(seconds=12)
+            game_info["questions"][game_info["question_index"]]["submitted_answers"] = {x:0 for x in ["A", "B", "C", "D"]}
             cache.set(game_id, game_info)
         elif datetime.datetime.now() > question.get("expiry") + datetime.timedelta(seconds=10):
             game_info["question_index"] += 1
+            game_info["questions"][game_info["question_index"]]["submitted_answers"] = {x:0 for x in ["A", "B", "C", "D"]}
             game_info["questions"][game_info["question_index"]]["expiry"] = datetime.datetime.now() + datetime.timedelta(seconds=12)
             cache.set(game_id, game_info)
             question = game_info["questions"][game_info["question_index"]]
@@ -126,21 +141,35 @@ class GameConsumer(AsyncConsumer):
                 "type": "game.next_question",
                 "question_id": question["id"],
                 "question_text": question["question"],
-                "answers": question["answers"]
+                "answers": question["answers"],
+                "expiry": (game_info["questions"][game_info["question_index"]]["expiry"] - datetime.datetime.now()).total_seconds()
             }
         )
 
-
-    def get_questions(self):
+    def _get_questions(self):
         question_list = []
         with open("./question_db.json") as questions:
             question_dict = json.loads(questions.read())
             keys = random.sample(question_dict.keys(), 10)
             question_list = [question_dict[x] for x in keys]
         return question_list
+
+    async def question_metrics(self, game_id, game_info, message):
+        cache = caches["default"]
+        question = game_info["questions"][game_info["question_index"]]
+        if question["id"] != message["question_id"]:
+            # handle it
+            pass
+        await self.send({
+            "type": "websocket.send",
+            "text": json.dumps({
+                "code": "question_metrics",
+                "metrics": question["submitted_answers"],
+                "correct_answer": question["correct_answer"],
+                "expiry": ((question["expiry"] + datetime.timedelta(seconds=10)) - datetime.datetime.now() ).total_seconds()
+            })
+        })
     
-
-
     async def websocket_receive(self, event):
         cache = caches["default"]
         game_id = self.scope["url_route"]["kwargs"]["game_id"]
@@ -151,7 +180,7 @@ class GameConsumer(AsyncConsumer):
             if game_info["status"] == "Lobby" and datetime.datetime.now() > game_info["start_time"]:
                 game_info["status"] = "In Progress"
                 cache.set(game_id, game_info)
-                game_info["questions"] = self.get_questions()
+                game_info["questions"] = self._get_questions()
                 game_info["question_index"] = 0
                 cache.set("next_game", None)
                 cache.set(game_id, game_info)
@@ -166,6 +195,8 @@ class GameConsumer(AsyncConsumer):
             await self.submit_answer(game_id, game_info, message)
         if message["code"] == "game.next_question":
             await self.next_question(event)
+        if message["code"] == "game.question_metrics":
+            await self.question_metrics(game_id, game_info, message)
 
     async def websocket_disconnect(self, event):
         pass
