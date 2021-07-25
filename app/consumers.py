@@ -59,10 +59,20 @@ class GameConsumer(AsyncConsumer):
                 "code": "next_question",
                 "question_id": message["question_id"],
                 "question_text": message["question_text"],
+                "question_number": message["question_number"],
                 "answers": message["answers"],
                 "expiry": message["expiry"]
             })
         })
+
+    async def game_new_winner(self, message):
+        await self.send({
+            "type": "websocket.send",
+            "text": json.dumps({
+                "code": "new_winner"
+            })
+        })
+
 
     async def submit_answer(self, game_id, game_info, message):
         cache = caches["default"]
@@ -93,15 +103,27 @@ class GameConsumer(AsyncConsumer):
                 })
             })
         elif message["answer"] == question["correct_answer"]:
-            game_info["questions"][game_info["question_index"]]["submitted_answers"][message["answer"]] += 1
-            cache.set(game_id, game_info)
-            await self.send({
-                "type": "websocket.send",
-                "text": json.dumps({
-                    "code": "correct_answer",
-                    "correct_answer": question["correct_answer"]
+            if game_info["question_index"] == 9:
+                await self.send({
+                    "type": "websocket.send",
+                    "text": json.dumps({
+                        "code": "game_winner"
+                    })
                 })
-            })
+                await self.channel_layer.group_send(
+                    game_id,
+                    {"type": "game.new_winner"}
+                )
+            else:
+                game_info["questions"][game_info["question_index"]]["submitted_answers"][message["answer"]] += 1
+                cache.set(game_id, game_info)
+                await self.send({
+                    "type": "websocket.send",
+                    "text": json.dumps({
+                        "code": "correct_answer",
+                        "correct_answer": question["correct_answer"]
+                    })
+                })
         else:
             game_info["questions"][game_info["question_index"]]["submitted_answers"][message["answer"]] += 1
             cache.set(game_id, game_info)
@@ -123,7 +145,7 @@ class GameConsumer(AsyncConsumer):
         game_info = cache.get(game_id)
         question = game_info["questions"][game_info["question_index"]]
         if question.get("expiry") is None:
-            game_info["questions"][game_info["question_index"]]["expiry"] =  datetime.datetime.now() + datetime.timedelta(seconds=12)
+            game_info["questions"][game_info["question_index"]]["expiry"] =  datetime.datetime.now() + datetime.timedelta(seconds=10)
             game_info["questions"][game_info["question_index"]]["submitted_answers"] = {x:0 for x in ["A", "B", "C", "D"]}
             cache.set(game_id, game_info)
         elif datetime.datetime.now() > question.get("expiry") + datetime.timedelta(seconds=10):
@@ -141,6 +163,7 @@ class GameConsumer(AsyncConsumer):
                 "type": "game.next_question",
                 "question_id": question["id"],
                 "question_text": question["question"],
+                "question_number": game_info["question_index"] + 1,
                 "answers": question["answers"],
                 "expiry": (game_info["questions"][game_info["question_index"]]["expiry"] - datetime.datetime.now()).total_seconds()
             }
