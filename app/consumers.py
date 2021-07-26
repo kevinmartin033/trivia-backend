@@ -12,9 +12,13 @@ class GameConsumer(AsyncConsumer):
         cache = caches["default"]
         # TODO: make this transactional?
         game_info = cache.get(game_id)
-        if not game_info:
-            #TODO: how"d u get here
-            pass
+        if not game_info or datetime.datetime.now() >= game_info["start_time"]:
+            return await self.send({
+                "type": "websocket.close"
+            })
+        await self.send({
+            "type": "websocket.accept"
+        })
         # TODO: Validate user should be in this game using jwt
         game_info["current_players"] += 1
         cache.set(game_id, game_info)
@@ -22,9 +26,6 @@ class GameConsumer(AsyncConsumer):
             game_id,
             self.channel_name
         )
-        await self.send({
-            "type": "websocket.accept"
-        })
         await self.channel_layer.group_send(
             game_id,
             {
@@ -72,7 +73,6 @@ class GameConsumer(AsyncConsumer):
                 "code": "new_winner"
             })
         })
-
 
     async def submit_answer(self, game_id, game_info, message):
         cache = caches["default"]
@@ -222,4 +222,22 @@ class GameConsumer(AsyncConsumer):
             await self.question_metrics(game_id, game_info, message)
 
     async def websocket_disconnect(self, event):
-        pass
+        game_id = self.scope["url_route"]["kwargs"]["game_id"]
+        cache = caches["default"]
+        game_info = cache.get(game_id)
+        if not game_info:
+            return
+        game_info["current_players"]  -= 1
+        cache.set(game_id, game_info)
+        await self.channel_layer.group_discard(
+            game_id,
+            self.channel_name
+        )
+        await self.channel_layer.group_send(
+            game_id,
+            {
+                "type": "game.players_count",
+                "message": game_info["current_players"],
+                "start_time": (game_info["start_time"] - datetime.datetime.now()).total_seconds()
+            }
+        )

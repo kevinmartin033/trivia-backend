@@ -6,7 +6,9 @@ import uuid
 def join_game(request):
     default_cache = caches['default']
     next_game_id = default_cache.get('next_game')
-    if not next_game_id:
+    if next_game_id:
+        game_info = default_cache.get(next_game_id)
+    if not next_game_id or datetime.datetime.now() >= game_info["start_time"]:
         next_game_id = uuid.uuid4()
         current_players = 0
         next_game = {
