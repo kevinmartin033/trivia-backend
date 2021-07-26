@@ -16,7 +16,6 @@ def join_game(request):
             "current_players": current_players,
             "status": "Lobby",
             # TODO: celery based events to start the game instead of this
-            # If player threshold is not met we don't want people waiting all day
             "start_time": datetime.datetime.now() + datetime.timedelta(seconds=10) 
         }
         default_cache.set(next_game["id"], next_game)
