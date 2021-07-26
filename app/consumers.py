@@ -94,6 +94,7 @@ class GameConsumer(AsyncConsumer):
                     "correct_answer": question_match["correct_answer"]
                 })
             })
+            
         if datetime.datetime.now() > question["expiry"]:
             await self.send({
                 "type": "websocket.send",
@@ -102,6 +103,10 @@ class GameConsumer(AsyncConsumer):
                     "correct_answer": question["correct_answer"]
                 })
             })
+            await self.channel_layer.group_discard(
+                game_id,
+                self.channel_name
+            )
         elif message["answer"] == question["correct_answer"]:
             if game_info["question_index"] == 9:
                 await self.send({
@@ -139,11 +144,18 @@ class GameConsumer(AsyncConsumer):
                 self.channel_name
             )
 
-    async def next_question(self, event):
+    async def next_question(self, message):
         cache = caches["default"]
         game_id = self.scope["url_route"]["kwargs"]["game_id"]
         game_info = cache.get(game_id)
         question = game_info["questions"][game_info["question_index"]]
+        if "question_id" in message and question["id"] != message["question_id"]:
+            return await self.send({
+                "type": "websocket.send",
+                "text": json.dumps({
+                    "code": "next_question_started"
+                })
+            })
         if question.get("expiry") is None:
             game_info["questions"][game_info["question_index"]]["expiry"] =  datetime.datetime.now() + datetime.timedelta(seconds=10)
             game_info["questions"][game_info["question_index"]]["submitted_answers"] = {x:0 for x in ["A", "B", "C", "D"]}
@@ -217,7 +229,7 @@ class GameConsumer(AsyncConsumer):
         if message["code"] == "game.submit_answer":
             await self.submit_answer(game_id, game_info, message)
         if message["code"] == "game.next_question":
-            await self.next_question(event)
+            await self.next_question(message)
         if message["code"] == "game.question_metrics":
             await self.question_metrics(game_id, game_info, message)
 
