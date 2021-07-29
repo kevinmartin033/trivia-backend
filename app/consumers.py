@@ -80,7 +80,7 @@ class GameConsumer(AsyncConsumer):
         if question["id"] != message["question_id"]:
             question_match = [x for x in game_info["questions"] if x["id"] == message["question_id"]]
             if not question_match:
-                self.self({
+                self.send({
                 "type": "websocket.send",
                 "text": json.dumps({
                     "code": "unknown_question"
